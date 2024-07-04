@@ -27,17 +27,21 @@ let notes = [
     }
 ]
 
-app.get('/api/notes/:id', (request, response) => {
+app.get('/api/notes/:id', (request, response, next) => {
     Note.findById(request.params.id).then(note => {
-        response.json(note)
-    })
+        if(note) {
+            response.json(note)
+        }
+        else {
+            response.status(404).end()
+        }
+    }).catch(error => next(error))
 })
 
-app.delete('/api/notes/:id', (request, response) => {
-    const id = Number(request.params.id)
-    notes = notes.filter(note => note.id !== id)
-
-    response.status(204).end()
+app.delete('/api/notes/:id', (request, response, next) => {
+    Note.findByIdAndDelete(request.params.id).then(note => {
+        response.status(204).end()
+    }).catch(error => next(error))
 })
 
 const generateId = () => {
@@ -45,12 +49,8 @@ const generateId = () => {
     return maxId + 1
 }
 
-app.post('/api/notes', (request, response) => {
+app.post('/api/notes', (request, response, next) => {
     const body = request.body
-
-    if (body.content === undefined) {
-        return response.status(400).json({ error: 'content missing' })
-    }
 
     const note = new Note({
         content: body.content,
@@ -59,7 +59,7 @@ app.post('/api/notes', (request, response) => {
 
     note.save().then(savedNote => {
         response.json(savedNote)
-    })
+    }).catch(error => next(error))
 })
 
 app.get('/api/notes', (request, response) => {
@@ -67,6 +67,32 @@ app.get('/api/notes', (request, response) => {
         response.json(notes)
     })
 })
+
+app.put('/api/notes/:id', (request, response, next) => {
+    const body = request.body
+
+    const note = {
+        content: body.content,
+        important: body.important,
+    }
+    Note.findByIdAndUpdate(request.params.id, note, {new: true, runValidators: true, context: 'query'}).then(note => {
+        response.json(note)
+    }).catch(error => next(error))
+})
+
+const errorHandler = (error, req, res, next) => {
+    console.log(error)
+
+    if(error.name === 'CastError') {
+        return res.status(400).send({error: 'malformatted id'})
+    }
+    else if(error.name === 'ValidationError') {
+        return res.status(400).send({error: error.message})
+    }
+    next(error)
+}
+
+app.use(errorHandler)
 
 const PORT = process.env.PORT || 3001
 app.listen(PORT, () => {
